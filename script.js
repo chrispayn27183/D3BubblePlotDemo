@@ -217,25 +217,21 @@ function createBubbleChart() {
     
     if (visibleSegments.length === 0) return;
     
-    // Calculate total value for pie chart
-    const totalValue = visibleSegments.reduce((sum, seg) => {
-        if (state.expandedSegments.has(seg.id) && seg.children) {
-            return sum + seg.children.reduce((s, sub) => s + (sub.value || 0), 0);
-        }
-        return sum + (seg.value || 0);
-    }, 0);
+    const segmentCount = visibleSegments.length;
+    const angleStep = (Math.PI * 2) / segmentCount;
+    const baseOffset = -Math.PI / 2; // start at top like an orange slice cross-section
     
-    // Create pie layout for radial segments
-    const pie = d3.pie()
-        .value(d => {
-            if (state.expandedSegments.has(d.id) && d.children) {
-                return d.children.reduce((sum, sub) => sum + (sub.value || 0), 0);
-            }
-            return d.value || 0;
-        })
-        .sort(null);
+    const arcs = visibleSegments.map((segment, index) => {
+        const startAngle = baseOffset + index * angleStep;
+        const endAngle = startAngle + angleStep;
+        return {
+            data: segment,
+            startAngle,
+            endAngle
+        };
+    });
     
-    const arcs = pie(visibleSegments);
+    const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
     
     // Create arc generator
     const arc = d3.arc()
@@ -299,28 +295,43 @@ function createBubbleChart() {
             
             pack(packRoot);
             
-            const radialRange = radius - innerRadius;
+            const radialRange = Math.max(0, radius - innerRadius);
             const angleRange = endAngle - startAngle;
             const averageRadius = innerRadius + radialRange / 2;
-            const angularScale = angleRange * averageRadius;
-            const radiusScale = radialRange;
+            const angularScale = angleRange * Math.max(averageRadius, 1);
+            const radiusScale = Math.max(radialRange, 1);
             
             const companies = packRoot.descendants().filter(d => d.depth > 1);
             
             companies.forEach(companyNode => {
-                const normalizedAngle = companyNode.x; // Already 0-1 because pack size is 1
+                const normalizedAngle = companyNode.x; // 0-1 due to pack size
                 const normalizedRadius = companyNode.y;
                 
-                const bubbleAngle = startAngle + normalizedAngle * angleRange;
-                const bubbleRadius = innerRadius + normalizedRadius * radialRange;
+                const rawCircleRadius = companyNode.r * Math.min(radiusScale, angularScale) * 0.75;
+                const circleRadius = Math.max(0.6, rawCircleRadius);
+                const radialPadding = circleRadius + 2;
+                
+                const radialMin = innerRadius + radialPadding;
+                const radialMax = radius - radialPadding;
+                const unclampedRadius = innerRadius + normalizedRadius * radialRange;
+                const bubbleRadius = clamp(unclampedRadius, radialMin, radialMax);
+                
+                const anglePadding = Math.min(
+                    angleRange * 0.45,
+                    (circleRadius / Math.max(bubbleRadius, 1)) * 1.3
+                );
+                const unclampedAngle = startAngle + normalizedAngle * angleRange;
+                const paddedStart = startAngle + anglePadding;
+                const paddedEnd = endAngle - anglePadding;
+                let bubbleAngle;
+                if (paddedStart >= paddedEnd) {
+                    bubbleAngle = (startAngle + endAngle) / 2;
+                } else {
+                    bubbleAngle = clamp(unclampedAngle, paddedStart, paddedEnd);
+                }
                 
                 const bubbleX = Math.cos(bubbleAngle) * bubbleRadius;
                 const bubbleY = Math.sin(bubbleAngle) * bubbleRadius;
-                
-                const circleRadius = Math.max(
-                    0.7,
-                    companyNode.r * Math.min(radiusScale, angularScale) * 0.8
-                );
                 
                 bubbleGroup.append("circle")
                     .attr("cx", bubbleX)
