@@ -259,15 +259,16 @@ function createBubbleChart() {
             .attr("stroke", "#fff")
             .attr("stroke-width", 2);
         
-        // Calculate center of the arc for nested packing
-        const centroid = arc.centroid(arcData);
-        const arcCenterX = centroid[0];
-        const arcCenterY = centroid[1];
-        
-        // Get the angle for rotation
+        // Get the angle for rotation - use middle angle for alignment
         const startAngle = arcData.startAngle;
         const endAngle = arcData.endAngle;
         const angle = (startAngle + endAngle) / 2;
+        
+        // Calculate position at middle angle for proper alignment with label
+        // Use the radial center of the arc (between inner and outer radius)
+        const radialCenter = (innerRadius + radius) / 2;
+        const arcCenterX = Math.cos(angle) * radialCenter;
+        const arcCenterY = Math.sin(angle) * radialCenter;
         
         // Create a group for nested bubbles, rotated to align with segment
         const bubbleGroup = segmentGroup.append("g")
@@ -461,16 +462,15 @@ function createBubbleChart() {
             });
         }
         
-        // Add label outside the segment
+        // Add label outside the segment - use same angle for alignment
         const labelRadius = radius + 20;
-        const labelAngle = (arcData.startAngle + arcData.endAngle) / 2;
-        const labelX = Math.cos(labelAngle) * labelRadius;
-        const labelY = Math.sin(labelAngle) * labelRadius;
+        const labelX = Math.cos(angle) * labelRadius;
+        const labelY = Math.sin(angle) * labelRadius;
         
         segmentGroup.append("text")
             .attr("x", labelX)
             .attr("y", labelY)
-            .attr("text-anchor", labelAngle > Math.PI ? "end" : "start")
+            .attr("text-anchor", angle > Math.PI ? "end" : "start")
             .attr("alignment-baseline", "middle")
             .attr("class", "bubble-label")
             .attr("font-size", "14px")
