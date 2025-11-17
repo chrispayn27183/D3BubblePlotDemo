@@ -1,0 +1,19 @@
+{
+  "name": "d3-bubble-plot-demo",
+  "version": "1.0.0",
+  "description": "Interactive D3.js bubble plot with hierarchical segments",
+  "main": "index.html",
+  "scripts": {
+    "start": "python3 -m http.server 8000",
+    "serve": "python3 -m http.server 8000"
+  },
+  "keywords": [
+    "d3",
+    "visualization",
+    "bubble-chart",
+    "hierarchical"
+  ],
+  "author": "",
+  "license": "MIT"
+}
+
