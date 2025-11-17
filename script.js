@@ -133,7 +133,6 @@ const segmentData = {
 
 // State management
 const state = {
-    expandedSegments: new Set(),
     visibleSegments: new Set(),
     activeData: segmentData
 };
@@ -244,7 +243,6 @@ function createBubbleChart() {
     // Draw each segment
     arcs.forEach((arcData, index) => {
         const segment = arcData.data;                                               // Segment object for this arc
-        const isExpanded = state.expandedSegments.has(segment.id);                  // Is this segment expanded?
 
         // Create group for this segment
         const segmentGroup = chartGroup.append("g")
@@ -375,7 +373,6 @@ function createControls() {
     container.selectAll("*").remove();
     
     segmentData.children.forEach(segment => {
-        const isExpanded = state.expandedSegments.has(segment.id);
         const isVisible = state.visibleSegments.has(segment.id);
         
         const segmentDiv = container.append("div")
@@ -403,8 +400,6 @@ function toggleSegment(segmentId, isVisible) {
         state.visibleSegments.add(segmentId);
     } else {
         state.visibleSegments.delete(segmentId);
-        // If hiding parent, also collapse it
-        state.expandedSegments.delete(segmentId);
     }
     
     // Update active data structure
