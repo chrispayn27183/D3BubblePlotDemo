@@ -235,14 +235,28 @@ function createBubbleChart() {
         .innerRadius(radius * 0.3)
         .outerRadius(radius);
     
+    // Create defs for clipping paths within the chart group
+    // This ensures clipping paths are in the same coordinate system as the segments
+    const defs = chartGroup.append("defs");
+    
     // Draw each segment
     arcs.forEach((arcData, index) => {
         const segment = arcData.data;
         const isExpanded = state.expandedSegments.has(segment.id);
         
+        // Create clipping path for this segment
+        const clipId = `clip-segment-${index}`;
+        const clipPath = defs.append("clipPath")
+            .attr("id", clipId);
+        
+        // The clipping path needs to be in the chartGroup coordinate system (centered at 0,0)
+        clipPath.append("path")
+            .attr("d", arc(arcData));
+        
         // Create group for this segment
         const segmentGroup = chartGroup.append("g")
-            .attr("class", "segment-group");
+            .attr("class", "segment-group")
+            .attr("clip-path", `url(#${clipId})`); // Apply clipping at segment level
         
         // Draw the arc (orange slice)
         const path = segmentGroup.append("path")
@@ -284,9 +298,19 @@ function createBubbleChart() {
         
         if (packData.children && packData.children.length > 0) {
             // Calculate available space for packing within the arc
-            const arcWidth = (endAngle - startAngle) * radius;
-            const arcHeight = radius * 0.7;
-            const packSize = Math.min(arcWidth, arcHeight) * 0.9;
+            // Use the arc's actual dimensions to constrain the packing area
+            const innerRadius = radius * 0.3;
+            const outerRadius = radius;
+            const arcSpan = endAngle - startAngle;
+            
+            // Calculate the maximum width and height of the arc segment
+            // Width is the chord length at the outer radius
+            const maxWidth = 2 * outerRadius * Math.sin(arcSpan / 2);
+            // Height is the radial distance
+            const maxHeight = outerRadius - innerRadius;
+            
+            // Use the smaller dimension to ensure everything fits
+            const packSize = Math.min(maxWidth, maxHeight) * 0.85;
             
             // Create pack layout for sub-segments
             const pack = d3.pack()
