@@ -235,28 +235,14 @@ function createBubbleChart() {
         .innerRadius(radius * 0.3)
         .outerRadius(radius);
     
-    // Create defs for clipping paths within the chart group
-    // This ensures clipping paths are in the same coordinate system as the segments
-    const defs = chartGroup.append("defs");
-    
     // Draw each segment
     arcs.forEach((arcData, index) => {
         const segment = arcData.data;
         const isExpanded = state.expandedSegments.has(segment.id);
         
-        // Create clipping path for this segment
-        const clipId = `clip-segment-${index}`;
-        const clipPath = defs.append("clipPath")
-            .attr("id", clipId);
-        
-        // The clipping path needs to be in the chartGroup coordinate system (centered at 0,0)
-        clipPath.append("path")
-            .attr("d", arc(arcData));
-        
         // Create group for this segment
         const segmentGroup = chartGroup.append("g")
-            .attr("class", "segment-group")
-            .attr("clip-path", `url(#${clipId})`); // Apply clipping at segment level
+            .attr("class", "segment-group");
         
         // Draw the arc (orange slice)
         const path = segmentGroup.append("path")
@@ -297,31 +283,27 @@ function createBubbleChart() {
         }
         
         if (packData.children && packData.children.length > 0) {
-            // Calculate available space for packing within the arc
-            // Use the arc's actual dimensions to constrain the packing area
             const innerRadius = radius * 0.3;
             const outerRadius = radius;
             const arcSpan = endAngle - startAngle;
             
-            // Calculate the maximum width and height of the arc segment
-            // Width is the chord length at the outer radius
+            // Calculate the maximum usable space within the arc
+            // Use a more conservative approach - calculate the inscribed rectangle
             const maxWidth = 2 * outerRadius * Math.sin(arcSpan / 2);
-            // Height is the radial distance
             const maxHeight = outerRadius - innerRadius;
             
-            // Use the smaller dimension to ensure everything fits
-            const packSize = Math.min(maxWidth, maxHeight) * 0.85;
+            // Start with a conservative pack size
+            let packSize = Math.min(maxWidth, maxHeight) * 0.75;
             
             // Create pack layout for sub-segments
-            const pack = d3.pack()
+            let pack = d3.pack()
                 .size([packSize, packSize])
                 .padding(2);
             
             // Build hierarchy: segment -> sub-segments -> companies
-            const packRoot = d3.hierarchy(packData)
+            let packRoot = d3.hierarchy(packData)
                 .sum(d => {
                     if (d.children && d.children.length > 0) {
-                        // Sum all company values within sub-segments
                         return d.children.reduce((sum, subSeg) => {
                             if (subSeg.children && subSeg.children.length > 0) {
                                 return sum + subSeg.children.reduce((s, company) => s + (company.value || 0), 0);
@@ -334,6 +316,72 @@ function createBubbleChart() {
                 .sort((a, b) => b.value - a.value);
             
             pack(packRoot);
+            
+            // Iteratively check and scale down until all nodes fit within arc boundaries
+            let maxIterations = 10;
+            let iteration = 0;
+            let allNodesFit = false;
+            
+            while (!allNodesFit && iteration < maxIterations) {
+                allNodesFit = true;
+                let minScaleFactor = 1;
+                
+                packRoot.descendants().filter(d => d.depth > 0).forEach(node => {
+                    // Transform node position to chart coordinates (before rotation)
+                    const nodeX = node.x - packSize/2;
+                    const nodeY = node.y - packSize/2;
+                    
+                    // Apply rotation
+                    const rotatedX = nodeX * Math.cos(angle) - nodeY * Math.sin(angle);
+                    const rotatedY = nodeX * Math.sin(angle) + nodeY * Math.cos(angle);
+                    
+                    // Transform to global coordinates
+                    const globalX = arcCenterX + rotatedX;
+                    const globalY = arcCenterY + rotatedY;
+                    
+                    const distance = Math.sqrt(globalX * globalX + globalY * globalY);
+                    
+                    // Check radial boundaries
+                    const maxDistance = distance + node.r;
+                    const minDistance = Math.max(0, distance - node.r);
+                    
+                    if (maxDistance > outerRadius) {
+                        allNodesFit = false;
+                        const requiredScale = (outerRadius - node.r) / distance;
+                        minScaleFactor = Math.min(minScaleFactor, requiredScale * 0.98);
+                    }
+                    
+                    if (minDistance < innerRadius && distance > 0) {
+                        allNodesFit = false;
+                        const requiredScale = (innerRadius + node.r) / distance;
+                        minScaleFactor = Math.min(minScaleFactor, requiredScale * 0.98);
+                    }
+                });
+                
+                // If nodes don't fit, scale down and repack
+                if (!allNodesFit && minScaleFactor < 1) {
+                    packSize = packSize * minScaleFactor;
+                    pack = d3.pack()
+                        .size([packSize, packSize])
+                        .padding(2);
+                    packRoot = d3.hierarchy(packData)
+                        .sum(d => {
+                            if (d.children && d.children.length > 0) {
+                                return d.children.reduce((sum, subSeg) => {
+                                    if (subSeg.children && subSeg.children.length > 0) {
+                                        return sum + subSeg.children.reduce((s, company) => s + (company.value || 0), 0);
+                                    }
+                                    return sum + (subSeg.value || 0);
+                                }, 0);
+                            }
+                            return d.value || 0;
+                        })
+                        .sort((a, b) => b.value - a.value);
+                    pack(packRoot);
+                }
+                
+                iteration++;
+            }
             
             // Draw sub-segments and their companies
             packRoot.children.forEach(subSegNode => {
@@ -348,9 +396,12 @@ function createBubbleChart() {
                 const subSegGroup = bubbleGroup.append("g")
                     .attr("transform", `translate(${subSegX},${subSegY})`);
                 
+                // Calculate available space for companies within this sub-segment
+                const companyAreaSize = subSegNode.r * 2;
+                
                 // Pack companies within this sub-segment
                 const companyPack = d3.pack()
-                    .size([subSegNode.r * 2.2, subSegNode.r * 2.2])
+                    .size([companyAreaSize, companyAreaSize])
                     .padding(0.3);
                 
                 const companyData = {
@@ -358,18 +409,44 @@ function createBubbleChart() {
                     children: subSegNode.data.children || []
                 };
                 
-                const companyRoot = d3.hierarchy(companyData)
+                let companyRoot = d3.hierarchy(companyData)
                     .sum(d => d.value || 0)
                     .sort((a, b) => b.value - a.value);
                 
                 companyPack(companyRoot);
+                
+                // Check if companies fit and scale if needed
+                let companyScaleFactor = 1;
+                companyRoot.descendants().filter(d => d.depth > 0).forEach(companyNode => {
+                    const companyX = companyNode.x;
+                    const companyY = companyNode.y;
+                    const distanceFromCenter = Math.sqrt(
+                        (companyX - companyAreaSize/2) ** 2 + 
+                        (companyY - companyAreaSize/2) ** 2
+                    );
+                    
+                    if (distanceFromCenter + companyNode.r > subSegNode.r) {
+                        const requiredScale = (subSegNode.r - 1) / (distanceFromCenter + companyNode.r);
+                        companyScaleFactor = Math.min(companyScaleFactor, requiredScale * 0.95);
+                    }
+                });
+                
+                // Rescale companies if needed
+                if (companyScaleFactor < 1) {
+                    const scaledSize = companyAreaSize * companyScaleFactor;
+                    companyPack.size([scaledSize, scaledSize]);
+                    companyRoot = d3.hierarchy(companyData)
+                        .sum(d => d.value || 0)
+                        .sort((a, b) => b.value - a.value);
+                    companyPack(companyRoot);
+                }
                 
                 // Draw all companies in this sub-segment
                 companyRoot.descendants().filter(d => d.depth > 0).forEach(companyNode => {
                     subSegGroup.append("circle")
                         .attr("cx", companyNode.x)
                         .attr("cy", companyNode.y)
-                        .attr("r", Math.max(1, companyNode.r))
+                        .attr("r", Math.max(0.5, companyNode.r))
                         .attr("fill", d3.color(colorScale(index)).brighter(0.6))
                         .attr("stroke", "#fff")
                         .attr("stroke-width", 0.3)
