@@ -189,41 +189,44 @@ function getColor(d) {
 
 // Create the bubble chart with radial segments
 function createBubbleChart() {
-    const svg = d3.select("#bubble-chart");
-    const width = svg.node().getBoundingClientRect().width;
-    const height = svg.node().getBoundingClientRect().height;
-    const centerX = width / 2;
-    const centerY = height / 2;
+    const svg = d3.select("#bubble-chart");                                         // Select the SVG element
+    const width = svg.node().getBoundingClientRect().width;                         // Get SVG width
+    const height = svg.node().getBoundingClientRect().height;                       // Get SVG height
+    const centerX = width / 2;                                                      // X center for chart group
+    const centerY = height / 2;                                                     // Y center for chart group
+
     // Compute visible segments here so we know how many for plotting shape
     const visibleSegments = segmentData.children.filter(seg => 
-        state.visibleSegments.has(seg.id)
+        state.visibleSegments.has(seg.id)                                           // Only include visible segments
     );
+    
     // If only one segment, plot as a single filled circle. Otherwise, donut.
     let radius, innerRadius;
     if (visibleSegments.length === 1) {
-        radius = Math.min(width, height) / 2 - 50;
-        innerRadius = 0; // full circle
+        radius = Math.min(width, height) / 2 - 50;                                  // Main circle size if only one
+        innerRadius = 0;                                                            // No hole (not a donut)
     } else {
-        radius = Math.min(width, height) / 2 - 50;
-        innerRadius = radius * 0.3; // donut donut
+        radius = Math.min(width, height) / 2 - 50;                                  // Outer radius for donut
+        innerRadius = radius * 0.2;                                                 // Inner radius for donut hole
     }
     
     // Clear previous content
-    svg.selectAll("*").remove();
+    svg.selectAll("*").remove();                                                    // Remove any previous drawing
     
     // Create a group for the chart
     const chartGroup = svg.append("g")
-        .attr("transform", `translate(${centerX},${centerY})`);
+        .attr("transform", `translate(${centerX},${centerY})`);                     // Center the chart
+
+    if (visibleSegments.length === 0) return;                                       // Nothing to draw if no segments
+
+    const segmentCount = visibleSegments.length;                                    // Number of visible segments
+    const angleStep = (Math.PI * 2) / segmentCount;                                 // Angle covered by each segment
+    const baseOffset = -Math.PI / 2;                                                // Start at top (12 o'clock)
     
-    if (visibleSegments.length === 0) return;
-    
-    const segmentCount = visibleSegments.length;
-    const angleStep = (Math.PI * 2) / segmentCount;
-    const baseOffset = -Math.PI / 2; // start at top like an orange slice cross-section
-    
+    // Calculate arcs for each visible segment
     const arcs = visibleSegments.map((segment, index) => {
-        const startAngle = baseOffset + index * angleStep;
-        const endAngle = startAngle + angleStep;
+        const startAngle = baseOffset + index * angleStep;                          // Start angle of segment
+        const endAngle = startAngle + angleStep;                                    // End angle of segment
         return {
             data: segment,
             startAngle,
@@ -231,38 +234,39 @@ function createBubbleChart() {
         };
     });
     
-    const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
-    
+    const clamp = (value, min, max) => Math.max(min, Math.min(max, value));         // Clamp utility
+
     // Create arc generator
     const arc = d3.arc()
-        .innerRadius(innerRadius)
-        .outerRadius(radius);
-    
+        .innerRadius(innerRadius)                                                   // Set donut inner radius
+        .outerRadius(radius);                                                       // Set donut/circle outer radius
+
     // Draw each segment
     arcs.forEach((arcData, index) => {
-        const segment = arcData.data;
-        const isExpanded = state.expandedSegments.has(segment.id);
-        
+        const segment = arcData.data;                                               // Segment object for this arc
+        const isExpanded = state.expandedSegments.has(segment.id);                  // Is this segment expanded?
+
         // Create group for this segment
         const segmentGroup = chartGroup.append("g")
-            .attr("class", "segment-group");
+            .attr("class", "segment-group");                                        // For styling/organization
         
         // Draw the arc (orange slice)
         const path = segmentGroup.append("path")
-            .attr("d", arc(arcData))
-            .attr("fill", colorScale(index))
-            .attr("opacity", 0.3)
-            .attr("stroke", "#fff")
-            .attr("stroke-width", 2);
+            .attr("d", arc(arcData))                                                // Path for arc (donut shape)
+            .attr("fill", colorScale(index))                                        // Segment color
+            .attr("opacity", 0.3)                                                   // Faint fill
+            .attr("stroke", "#fff")                                                 // White border
+            .attr("stroke-width", 2);                                               // Border width
         
         // Get the angle for rotation - use middle angle for alignment
-        const startAngle = arcData.startAngle;
-        const endAngle = arcData.endAngle;
-        const angle = (startAngle + endAngle) / 2;
-        
+        const startAngle = arcData.startAngle;                                      // This segment's start
+        const endAngle = arcData.endAngle;                                          // This segment's end
+        const angle = (startAngle + endAngle) / 2;                                  // Middle angle for label
+
         // Create a group for nested bubbles anchored at chart center (0,0)
-        const bubbleGroup = segmentGroup.append("g");
+        const bubbleGroup = segmentGroup.append("g");                               // Bubbles are organized here
         
+        // ----- PACKING PREP -----
         // Prepare data for packing within this segment
         // Always show sub-segments with their companies
         let packData;
@@ -270,78 +274,81 @@ function createBubbleChart() {
             packData = {
                 name: segment.name,
                 children: segment.children.map(subSeg => ({
-                    name: subSeg.name,
-                    value: subSeg.value,
-                    children: subSeg.children || []
+                    name: subSeg.name,                                              // Sub-segment name
+                    value: subSeg.value,                                            // Sub-segment size
+                    children: subSeg.children || []                                 // Companies as children
                 }))
             };
         } else {
-            packData = { name: segment.name, children: [] };
+            packData = { name: segment.name, children: [] };                        // No children
         }
         
+        // Only run packing/bubble layout if there are children
         if (packData.children && packData.children.length > 0) {
             const pack = d3.pack()
-                .size([1, 1])
-                .padding(0.003);
+                .size([1, 1])                                                       // Pack layout in 1x1 "unit" box
+                .padding(0.003);                                                    // Tiny padding between bubbles
             
             const packRoot = d3.hierarchy(packData)
                 .sum(d => {
                     if (d.children && d.children.length > 0) {
-                        return d.children.reduce((sum, child) => sum + (child.value || 0), 0);
+                        return d.children.reduce((sum, child) => sum + (child.value || 0), 0); // Sum values of children
                     }
-                    return d.value || 0;
+                    return d.value || 0;                                            // Use self value if leaf
                 })
-                .sort((a, b) => b.value - a.value);
+                .sort((a, b) => b.value - a.value);                                 // Largest first
             
-            pack(packRoot);
+            pack(packRoot);                                                          // Calculate layout
             
-            const radialRange = Math.max(0, radius - innerRadius);
-            const angleRange = endAngle - startAngle;
-            const averageRadius = innerRadius + radialRange / 2;
-            const angularScale = angleRange * Math.max(averageRadius, 1);
-            const radiusScale = Math.max(radialRange, 1);
-            const midAngle = (startAngle + endAngle) / 2;
-            
-            const companies = packRoot.descendants().filter(d => d.depth > 1);
-            
+            const radialRange = Math.max(0, radius - innerRadius);                   // Space available radially
+            const angleRange = endAngle - startAngle;                               // Angle covered by this segment
+            const averageRadius = innerRadius + radialRange / 2;                    // Used for scaling
+            const angularScale = angleRange * Math.max(averageRadius, 1);           // Scaled "arc" length
+            const radiusScale = Math.max(radialRange, 1);                           // Ensure scale is valid
+            const midAngle = (startAngle + endAngle) / 2;                           // Middle of this segment
+
+            // Only companies (skip root and sub-segment nodes)
+            const companies = packRoot.descendants().filter(d => d.depth > 1);      // Only leaf company nodes
+
+            // Draw each company as a bubble within the segment
             companies.forEach(companyNode => {
-                const normalizedAngle = companyNode.x; // 0-1 due to pack size
-                const normalizedRadius = companyNode.y;
+                const normalizedAngle = companyNode.x;                              // X (0-1) in pack layout
+                const normalizedRadius = companyNode.y;                             // Y (0-1) in pack layout
                 
-                const rawCircleRadius = companyNode.r * Math.min(radiusScale, angularScale) * 0.75;
-                const circleRadius = Math.max(0.6, rawCircleRadius);
-                const radialPadding = circleRadius + 2;
-                
-                const radialMin = innerRadius + radialPadding;
-                const radialMax = radius - radialPadding;
-                const unclampedRadius = innerRadius + normalizedRadius * radialRange;
+                const rawCircleRadius = companyNode.r * Math.min(radiusScale, angularScale) * 0.75; // Radius (scaled)
+                const circleRadius = Math.max(0.6, rawCircleRadius);                // Enforce min radius
+                const radialPadding = circleRadius + 2;                             // Bubble "buffer"
+
+                const radialMin = innerRadius + radialPadding;                      // Closest allowed to center
+                const radialMax = radius - radialPadding;                           // Farthest allowed from center
+                const unclampedRadius = innerRadius + normalizedRadius * radialRange;// Natural radial location
                 const bubbleRadius = (radialMin >= radialMax)
-                    ? (innerRadius + radius) / 2
-                    : clamp(unclampedRadius, radialMin, radialMax);
-                
+                    ? (innerRadius + radius) / 2                                    // Edge case: draw in middle
+                    : clamp(unclampedRadius, radialMin, radialMax);                 // Otherwise: clamp safely
+                    
                 const anglePadding = Math.min(
                     angleRange * 0.35,
                     (circleRadius / Math.max(bubbleRadius, 1)) * 1.15
-                );
-                const paddedStart = startAngle + anglePadding;
-                const paddedEnd = endAngle - anglePadding;
-                const tangentialOffset = (normalizedAngle - 0.5) * angleRange * 0.8;
-                const unclampedAngle = midAngle + tangentialOffset;
+                );                                                                  // Prevent bubbles from overlapping arc edge
+                const paddedStart = startAngle + anglePadding;                      // Left bound for angle
+                const paddedEnd = endAngle - anglePadding;                          // Right bound for angle
+                const tangentialOffset = (normalizedAngle - 0.5) * angleRange * 0.8;// Map [0,1] onto centered segment portion
+                const unclampedAngle = midAngle + tangentialOffset;                 // Natural angle of bubble
                 const bubbleAngle = (paddedStart >= paddedEnd)
-                    ? midAngle
-                    : clamp(unclampedAngle, paddedStart, paddedEnd);
-                
-                const bubbleX = Math.cos(bubbleAngle) * bubbleRadius;
-                const bubbleY = Math.sin(bubbleAngle) * bubbleRadius;
-                
+                    ? midAngle                                                     // Edge case: just use center
+                    : clamp(unclampedAngle, paddedStart, paddedEnd);                // Otherwise keep within arc
+                    
+                const bubbleX = Math.cos(bubbleAngle) * bubbleRadius;               // Final x position
+                const bubbleY = Math.sin(bubbleAngle) * bubbleRadius;               // Final y position
+                    
                 bubbleGroup.append("circle")
-                    .attr("cx", bubbleX)
-                    .attr("cy", bubbleY)
-                    .attr("r", circleRadius)
-                    .attr("fill", d3.color(colorScale(index)).brighter(0.6))
-                    .attr("stroke", "#fff")
-                    .attr("stroke-width", 0.3)
-                    .attr("opacity", 0.85);
+                    .attr("cx", bubbleX)                                            // Position x
+                    .attr("cy", bubbleY)                                            // Position y
+                    .attr("r", circleRadius)                                        // Bubble radius
+                    .attr("fill", d3.color(colorScale(index)).brighter(0.6))        // Fill color (lighter)
+                    .attr("stroke", "#fff")                                         // White border
+                    .attr("stroke-width", 0.3)                                      // Thin border
+                    .attr("opacity", 0.85);                                         // Slightly transparent
             });
         }
         
@@ -371,21 +378,10 @@ function createControls() {
         const isExpanded = state.expandedSegments.has(segment.id);
         const isVisible = state.visibleSegments.has(segment.id);
         
-        // Main segment row
         const segmentDiv = container.append("div")
-            .attr("class", "segment-item");
-        
-        const row = segmentDiv.append("div")
-            .attr("class", "segment-row");
-        
-        // Expand button
-        const expandBtn = row.append("button")
-            .attr("class", "expand-button")
-            .text(isExpanded ? "−" : "+")
-            .on("click", () => toggleExpand(segment.id));
-        
-        // Checkbox
-        const checkbox = row.append("input")
+            .attr("class", "segment-item segment-row");
+
+        segmentDiv.append("input")
             .attr("type", "checkbox")
             .attr("class", "segment-checkbox")
             .attr("id", segment.id)
@@ -394,39 +390,10 @@ function createControls() {
                 toggleSegment(segment.id, this.checked);
             });
         
-        // Label
-        row.append("label")
+        segmentDiv.append("label")
             .attr("class", "segment-label")
             .attr("for", segment.id)
             .text(segment.name);
-        
-        // Sub-segments container
-        if (segment.children && segment.children.length > 0) {
-            const subContainer = segmentDiv.append("div")
-                .attr("class", "sub-segments")
-                .style("display", isExpanded ? "block" : "none");
-            
-            segment.children.forEach(subSegment => {
-                const subRow = subContainer.append("div")
-                    .attr("class", "segment-row");
-                
-                subRow.append("input")
-                    .attr("type", "checkbox")
-                    .attr("class", "segment-checkbox")
-                    .attr("id", subSegment.id)
-                    .property("checked", isVisible && isExpanded)
-                    .on("change", function() {
-                        // Sub-segment visibility is controlled by parent
-                        // This is mainly for visual feedback
-                    })
-                    .property("disabled", !isExpanded || !isVisible);
-                
-                subRow.append("label")
-                    .attr("class", "segment-label")
-                    .attr("for", subSegment.id)
-                    .text(subSegment.name);
-            });
-        }
     });
 }
 
@@ -446,50 +413,17 @@ function toggleSegment(segmentId, isVisible) {
     createBubbleChart();
 }
 
-// Toggle expand/collapse
-function toggleExpand(segmentId) {
-    if (state.expandedSegments.has(segmentId)) {
-        state.expandedSegments.delete(segmentId);
-    } else {
-        state.expandedSegments.add(segmentId);
-    }
-    
-    updateActiveData();
-    createControls();
-    createBubbleChart();
-}
-
 // Update active data based on expanded state
 function updateActiveData() {
-    const children = [];
-    
-    segmentData.children.forEach(segment => {
-        // Only process visible segments
-        if (!state.visibleSegments.has(segment.id)) return;
-        
-        if (state.expandedSegments.has(segment.id) && segment.children) {
-            // When expanded, add sub-segments directly (replacing parent)
-            segment.children.forEach(subSegment => {
-                children.push({
-                    name: subSegment.name,
-                    id: subSegment.id,
-                    value: subSegment.value
-                });
-            });
-        } else {
-            // Show parent segment
-            children.push({
-                name: segment.name,
-                id: segment.id,
-                value: segment.value
-            });
-        }
-    });
-    
-    state.activeData = {
-        name: "root",
-        children: children
-    };
+    const children = segmentData.children
+        .filter(segment => state.visibleSegments.has(segment.id))
+        .map(segment => ({
+            name: segment.name,
+            id: segment.id,
+            value: segment.value
+        }));
+
+    state.activeData = { name: "root", children };
 }
 
 // Handle window resize
