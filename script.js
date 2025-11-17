@@ -300,6 +300,7 @@ function createBubbleChart() {
             const averageRadius = innerRadius + radialRange / 2;
             const angularScale = angleRange * Math.max(averageRadius, 1);
             const radiusScale = Math.max(radialRange, 1);
+            const midAngle = (startAngle + endAngle) / 2;
             
             const companies = packRoot.descendants().filter(d => d.depth > 1);
             
@@ -314,21 +315,21 @@ function createBubbleChart() {
                 const radialMin = innerRadius + radialPadding;
                 const radialMax = radius - radialPadding;
                 const unclampedRadius = innerRadius + normalizedRadius * radialRange;
-                const bubbleRadius = clamp(unclampedRadius, radialMin, radialMax);
+                const bubbleRadius = (radialMin >= radialMax)
+                    ? (innerRadius + radius) / 2
+                    : clamp(unclampedRadius, radialMin, radialMax);
                 
                 const anglePadding = Math.min(
-                    angleRange * 0.45,
-                    (circleRadius / Math.max(bubbleRadius, 1)) * 1.3
+                    angleRange * 0.35,
+                    (circleRadius / Math.max(bubbleRadius, 1)) * 1.15
                 );
-                const unclampedAngle = startAngle + normalizedAngle * angleRange;
                 const paddedStart = startAngle + anglePadding;
                 const paddedEnd = endAngle - anglePadding;
-                let bubbleAngle;
-                if (paddedStart >= paddedEnd) {
-                    bubbleAngle = (startAngle + endAngle) / 2;
-                } else {
-                    bubbleAngle = clamp(unclampedAngle, paddedStart, paddedEnd);
-                }
+                const tangentialOffset = (normalizedAngle - 0.5) * angleRange * 0.8;
+                const unclampedAngle = midAngle + tangentialOffset;
+                const bubbleAngle = (paddedStart >= paddedEnd)
+                    ? midAngle
+                    : clamp(unclampedAngle, paddedStart, paddedEnd);
                 
                 const bubbleX = Math.cos(bubbleAngle) * bubbleRadius;
                 const bubbleY = Math.sin(bubbleAngle) * bubbleRadius;
@@ -352,7 +353,7 @@ function createBubbleChart() {
         segmentGroup.append("text")
             .attr("x", labelX)
             .attr("y", labelY)
-            .attr("text-anchor", angle > Math.PI ? "end" : "start")
+            .attr("text-anchor", "middle")
             .attr("alignment-baseline", "middle")
             .attr("class", "bubble-label")
             .attr("font-size", "14px")
