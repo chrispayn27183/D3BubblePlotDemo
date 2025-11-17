@@ -1,4 +1,17 @@
-// Sample hierarchical data structure
+// Helper function to generate company names
+function generateCompanies(count, prefix) {
+    const companies = [];
+    for (let i = 1; i <= count; i++) {
+        companies.push({
+            name: `Company ${prefix}.${i}`,
+            id: `company-${prefix}-${i}`,
+            value: Math.random() * 2 + 0.5 // Random value between 0.5 and 2.5
+        });
+    }
+    return companies;
+}
+
+// Sample hierarchical data structure with companies
 const segmentData = {
     name: "root",
     children: [
@@ -7,10 +20,30 @@ const segmentData = {
             id: "segment-1",
             value: 30,
             children: [
-                { name: "Segment 1.1", id: "segment-1-1", value: 10 },
-                { name: "Segment 1.2", id: "segment-1-2", value: 8 },
-                { name: "Segment 1.3", id: "segment-1-3", value: 7 },
-                { name: "Segment 1.4", id: "segment-1-4", value: 5 }
+                { 
+                    name: "Segment 1.1", 
+                    id: "segment-1-1", 
+                    value: 10,
+                    children: generateCompanies(25, "1-1")
+                },
+                { 
+                    name: "Segment 1.2", 
+                    id: "segment-1-2", 
+                    value: 8,
+                    children: generateCompanies(20, "1-2")
+                },
+                { 
+                    name: "Segment 1.3", 
+                    id: "segment-1-3", 
+                    value: 7,
+                    children: generateCompanies(18, "1-3")
+                },
+                { 
+                    name: "Segment 1.4", 
+                    id: "segment-1-4", 
+                    value: 5,
+                    children: generateCompanies(15, "1-4")
+                }
             ]
         },
         {
@@ -18,9 +51,24 @@ const segmentData = {
             id: "segment-2",
             value: 25,
             children: [
-                { name: "Segment 2.1", id: "segment-2-1", value: 12 },
-                { name: "Segment 2.2", id: "segment-2-2", value: 8 },
-                { name: "Segment 2.3", id: "segment-2-3", value: 5 }
+                { 
+                    name: "Segment 2.1", 
+                    id: "segment-2-1", 
+                    value: 12,
+                    children: generateCompanies(30, "2-1")
+                },
+                { 
+                    name: "Segment 2.2", 
+                    id: "segment-2-2", 
+                    value: 8,
+                    children: generateCompanies(20, "2-2")
+                },
+                { 
+                    name: "Segment 2.3", 
+                    id: "segment-2-3", 
+                    value: 5,
+                    children: generateCompanies(15, "2-3")
+                }
             ]
         },
         {
@@ -28,8 +76,18 @@ const segmentData = {
             id: "segment-3",
             value: 20,
             children: [
-                { name: "Segment 3.1", id: "segment-3-1", value: 10 },
-                { name: "Segment 3.2", id: "segment-3-2", value: 10 }
+                { 
+                    name: "Segment 3.1", 
+                    id: "segment-3-1", 
+                    value: 10,
+                    children: generateCompanies(25, "3-1")
+                },
+                { 
+                    name: "Segment 3.2", 
+                    id: "segment-3-2", 
+                    value: 10,
+                    children: generateCompanies(25, "3-2")
+                }
             ]
         },
         {
@@ -37,8 +95,18 @@ const segmentData = {
             id: "segment-4",
             value: 15,
             children: [
-                { name: "Segment 4.1", id: "segment-4-1", value: 8 },
-                { name: "Segment 4.2", id: "segment-4-2", value: 7 }
+                { 
+                    name: "Segment 4.1", 
+                    id: "segment-4-1", 
+                    value: 8,
+                    children: generateCompanies(20, "4-1")
+                },
+                { 
+                    name: "Segment 4.2", 
+                    id: "segment-4-2", 
+                    value: 7,
+                    children: generateCompanies(18, "4-2")
+                }
             ]
         },
         {
@@ -46,8 +114,18 @@ const segmentData = {
             id: "segment-5",
             value: 10,
             children: [
-                { name: "Segment 5.1", id: "segment-5-1", value: 5 },
-                { name: "Segment 5.2", id: "segment-5-2", value: 5 }
+                { 
+                    name: "Segment 5.1", 
+                    id: "segment-5-1", 
+                    value: 5,
+                    children: generateCompanies(15, "5-1")
+                },
+                { 
+                    name: "Segment 5.2", 
+                    id: "segment-5-2", 
+                    value: 5,
+                    children: generateCompanies(15, "5-2")
+                }
             ]
         }
     ]
@@ -109,49 +187,189 @@ function getColor(d) {
     return "#cccccc";
 }
 
-// Create the bubble chart
+// Create the bubble chart with radial segments
 function createBubbleChart() {
     const svg = d3.select("#bubble-chart");
     const width = svg.node().getBoundingClientRect().width;
     const height = svg.node().getBoundingClientRect().height;
+    const centerX = width / 2;
+    const centerY = height / 2;
+    const radius = Math.min(width, height) / 2 - 50;
     
     // Clear previous content
     svg.selectAll("*").remove();
     
-    // Create pack layout
-    const pack = d3.pack()
-        .size([width, height])
-        .padding(3);
+    // Create a group for the chart
+    const chartGroup = svg.append("g")
+        .attr("transform", `translate(${centerX},${centerY})`);
     
     // Process data based on current state
-    const root = d3.hierarchy(state.activeData)
-        .sum(d => d.value || 0)
-        .sort((a, b) => b.value - a.value);
+    const visibleSegments = segmentData.children.filter(seg => 
+        state.visibleSegments.has(seg.id)
+    );
     
-    pack(root);
+    if (visibleSegments.length === 0) return;
     
-    // Create groups for each bubble (only depth 1 nodes, as we've flattened the structure)
-    const node = svg.selectAll("g")
-        .data(root.descendants().filter(d => d.depth > 0))
-        .enter()
-        .append("g")
-        .attr("transform", d => `translate(${d.x},${d.y})`)
-        .attr("class", "bubble");
+    // Calculate total value for pie chart
+    const totalValue = visibleSegments.reduce((sum, seg) => {
+        if (state.expandedSegments.has(seg.id) && seg.children) {
+            return sum + seg.children.reduce((s, sub) => s + (sub.value || 0), 0);
+        }
+        return sum + (seg.value || 0);
+    }, 0);
     
-    // Draw circles
-    node.append("circle")
-        .attr("r", d => d.r)
-        .attr("fill", d => getColor(d))
-        .attr("stroke", "#fff")
-        .attr("stroke-width", 2)
-        .attr("opacity", 0.8);
+    // Create pie layout for radial segments
+    const pie = d3.pie()
+        .value(d => {
+            if (state.expandedSegments.has(d.id) && d.children) {
+                return d.children.reduce((sum, sub) => sum + (sub.value || 0), 0);
+            }
+            return d.value || 0;
+        })
+        .sort(null);
     
-    // Add labels outside the bubbles
-    node.append("text")
-        .attr("class", "bubble-label")
-        .attr("dy", d => d.r + 15)
-        .text(d => d.data.name)
-        .attr("font-size", d => Math.min(12, d.r / 3));
+    const arcs = pie(visibleSegments);
+    
+    // Create arc generator
+    const arc = d3.arc()
+        .innerRadius(radius * 0.3)
+        .outerRadius(radius);
+    
+    // Draw each segment
+    arcs.forEach((arcData, index) => {
+        const segment = arcData.data;
+        const isExpanded = state.expandedSegments.has(segment.id);
+        
+        // Create group for this segment
+        const segmentGroup = chartGroup.append("g")
+            .attr("class", "segment-group");
+        
+        // Draw the arc (orange slice)
+        const path = segmentGroup.append("path")
+            .attr("d", arc(arcData))
+            .attr("fill", colorScale(index))
+            .attr("opacity", 0.3)
+            .attr("stroke", "#fff")
+            .attr("stroke-width", 2);
+        
+        // Calculate center of the arc for nested packing
+        const centroid = arc.centroid(arcData);
+        const arcCenterX = centroid[0];
+        const arcCenterY = centroid[1];
+        
+        // Get the angle for rotation
+        const startAngle = arcData.startAngle;
+        const endAngle = arcData.endAngle;
+        const angle = (startAngle + endAngle) / 2;
+        
+        // Create a group for nested bubbles, rotated to align with segment
+        const bubbleGroup = segmentGroup.append("g")
+            .attr("transform", `translate(${arcCenterX},${arcCenterY}) rotate(${angle * 180 / Math.PI})`);
+        
+        // Prepare data for packing within this segment
+        // Always show sub-segments with their companies
+        let packData;
+        if (segment.children) {
+            packData = {
+                name: segment.name,
+                children: segment.children.map(subSeg => ({
+                    name: subSeg.name,
+                    value: subSeg.value,
+                    children: subSeg.children || []
+                }))
+            };
+        } else {
+            packData = { name: segment.name, children: [] };
+        }
+        
+        if (packData.children && packData.children.length > 0) {
+            // Calculate available space for packing within the arc
+            const arcWidth = (endAngle - startAngle) * radius;
+            const arcHeight = radius * 0.7;
+            const packSize = Math.min(arcWidth, arcHeight) * 0.9;
+            
+            // Create pack layout for sub-segments
+            const pack = d3.pack()
+                .size([packSize, packSize])
+                .padding(2);
+            
+            // Build hierarchy: segment -> sub-segments -> companies
+            const packRoot = d3.hierarchy(packData)
+                .sum(d => {
+                    if (d.children && d.children.length > 0) {
+                        // Sum all company values within sub-segments
+                        return d.children.reduce((sum, subSeg) => {
+                            if (subSeg.children && subSeg.children.length > 0) {
+                                return sum + subSeg.children.reduce((s, company) => s + (company.value || 0), 0);
+                            }
+                            return sum + (subSeg.value || 0);
+                        }, 0);
+                    }
+                    return d.value || 0;
+                })
+                .sort((a, b) => b.value - a.value);
+            
+            pack(packRoot);
+            
+            // Draw sub-segments and their companies
+            packRoot.children.forEach(subSegNode => {
+                // Check if this sub-segment has companies in its data
+                if (!subSegNode.data.children || subSegNode.data.children.length === 0) return;
+                
+                // Position of this sub-segment cluster
+                const subSegX = subSegNode.x - packSize/2;
+                const subSegY = subSegNode.y - packSize/2;
+                
+                // Create group for this sub-segment's companies
+                const subSegGroup = bubbleGroup.append("g")
+                    .attr("transform", `translate(${subSegX},${subSegY})`);
+                
+                // Pack companies within this sub-segment
+                const companyPack = d3.pack()
+                    .size([subSegNode.r * 2.2, subSegNode.r * 2.2])
+                    .padding(0.3);
+                
+                const companyData = {
+                    name: subSegNode.data.name,
+                    children: subSegNode.data.children || []
+                };
+                
+                const companyRoot = d3.hierarchy(companyData)
+                    .sum(d => d.value || 0)
+                    .sort((a, b) => b.value - a.value);
+                
+                companyPack(companyRoot);
+                
+                // Draw all companies in this sub-segment
+                companyRoot.descendants().filter(d => d.depth > 0).forEach(companyNode => {
+                    subSegGroup.append("circle")
+                        .attr("cx", companyNode.x)
+                        .attr("cy", companyNode.y)
+                        .attr("r", Math.max(1, companyNode.r))
+                        .attr("fill", d3.color(colorScale(index)).brighter(0.6))
+                        .attr("stroke", "#fff")
+                        .attr("stroke-width", 0.3)
+                        .attr("opacity", 0.8);
+                });
+            });
+        }
+        
+        // Add label outside the segment
+        const labelRadius = radius + 20;
+        const labelAngle = (arcData.startAngle + arcData.endAngle) / 2;
+        const labelX = Math.cos(labelAngle) * labelRadius;
+        const labelY = Math.sin(labelAngle) * labelRadius;
+        
+        segmentGroup.append("text")
+            .attr("x", labelX)
+            .attr("y", labelY)
+            .attr("text-anchor", labelAngle > Math.PI ? "end" : "start")
+            .attr("alignment-baseline", "middle")
+            .attr("class", "bubble-label")
+            .attr("font-size", "14px")
+            .attr("font-weight", "600")
+            .text(segment.name);
+    });
 }
 
 // Create the left panel controls
