@@ -270,9 +270,9 @@ function createBubbleChart() {
         const arcCenterX = Math.cos(angle) * radialCenter;
         const arcCenterY = Math.sin(angle) * radialCenter;
         
-        // Create a group for nested bubbles, rotated to align with segment
+        // Create a group for nested bubbles - no rotation needed, just position at middle angle
         const bubbleGroup = segmentGroup.append("g")
-            .attr("transform", `translate(${arcCenterX},${arcCenterY}) rotate(${angle * 180 / Math.PI})`);
+            .attr("transform", `translate(${arcCenterX},${arcCenterY})`);
         
         // Prepare data for packing within this segment
         // Always show sub-segments with their companies
@@ -334,17 +334,13 @@ function createBubbleChart() {
                 let minScaleFactor = 1;
                 
                 packRoot.descendants().filter(d => d.depth > 0).forEach(node => {
-                    // Transform node position to chart coordinates (before rotation)
+                    // Transform node position to chart coordinates
                     const nodeX = node.x - packSize/2;
                     const nodeY = node.y - packSize/2;
                     
-                    // Apply rotation
-                    const rotatedX = nodeX * Math.cos(angle) - nodeY * Math.sin(angle);
-                    const rotatedY = nodeX * Math.sin(angle) + nodeY * Math.cos(angle);
-                    
-                    // Transform to global coordinates
-                    const globalX = arcCenterX + rotatedX;
-                    const globalY = arcCenterY + rotatedY;
+                    // Transform to global coordinates (no rotation applied)
+                    const globalX = arcCenterX + nodeX;
+                    const globalY = arcCenterY + nodeY;
                     
                     const distance = Math.sqrt(globalX * globalX + globalY * globalY);
                     
