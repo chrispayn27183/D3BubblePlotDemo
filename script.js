@@ -194,7 +194,19 @@ function createBubbleChart() {
     const height = svg.node().getBoundingClientRect().height;
     const centerX = width / 2;
     const centerY = height / 2;
-    const radius = Math.min(width, height) / 2 - 50;
+    // Compute visible segments here so we know how many for plotting shape
+    const visibleSegments = segmentData.children.filter(seg => 
+        state.visibleSegments.has(seg.id)
+    );
+    // If only one segment, plot as a single filled circle. Otherwise, donut.
+    let radius, innerRadius;
+    if (visibleSegments.length === 1) {
+        radius = Math.min(width, height) / 2 - 50;
+        innerRadius = 0; // full circle
+    } else {
+        radius = Math.min(width, height) / 2 - 50;
+        innerRadius = radius * 0.3; // donut donut
+    }
     
     // Clear previous content
     svg.selectAll("*").remove();
@@ -202,11 +214,6 @@ function createBubbleChart() {
     // Create a group for the chart
     const chartGroup = svg.append("g")
         .attr("transform", `translate(${centerX},${centerY})`);
-    
-    // Process data based on current state
-    const visibleSegments = segmentData.children.filter(seg => 
-        state.visibleSegments.has(seg.id)
-    );
     
     if (visibleSegments.length === 0) return;
     
@@ -232,7 +239,7 @@ function createBubbleChart() {
     
     // Create arc generator
     const arc = d3.arc()
-        .innerRadius(radius * 0.3)
+        .innerRadius(innerRadius)
         .outerRadius(radius);
     
     // Draw each segment
@@ -283,7 +290,6 @@ function createBubbleChart() {
         }
         
         if (packData.children && packData.children.length > 0) {
-            const innerRadius = radius * 0.3;
             const outerRadius = radius;
             const arcSpan = endAngle - startAngle;
             
