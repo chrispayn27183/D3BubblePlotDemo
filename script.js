@@ -264,15 +264,8 @@ function createBubbleChart() {
         const endAngle = arcData.endAngle;
         const angle = (startAngle + endAngle) / 2;
         
-        // Calculate position at middle angle for proper alignment with label
-        // Use the radial center of the arc (between inner and outer radius)
-        const radialCenter = (innerRadius + radius) / 2;
-        const arcCenterX = Math.cos(angle) * radialCenter;
-        const arcCenterY = Math.sin(angle) * radialCenter;
-        
-        // Create a group for nested bubbles - no rotation needed, just position at middle angle
-        const bubbleGroup = segmentGroup.append("g")
-            .attr("transform", `translate(${arcCenterX},${arcCenterY})`);
+        // Create a group for nested bubbles anchored at chart center (0,0)
+        const bubbleGroup = segmentGroup.append("g");
         
         // Prepare data for packing within this segment
         // Always show sub-segments with their companies
@@ -291,32 +284,14 @@ function createBubbleChart() {
         }
         
         if (packData.children && packData.children.length > 0) {
-            const outerRadius = radius;
-            const arcSpan = endAngle - startAngle;
+            const pack = d3.pack()
+                .size([1, 1])
+                .padding(0.003);
             
-            // Calculate the maximum usable space within the arc
-            // Use a more conservative approach - calculate the inscribed rectangle
-            const maxWidth = 2 * outerRadius * Math.sin(arcSpan / 2);
-            const maxHeight = outerRadius - innerRadius;
-            
-            // Start with a conservative pack size
-            let packSize = Math.min(maxWidth, maxHeight) * 0.75;
-            
-            // Create pack layout for sub-segments
-            let pack = d3.pack()
-                .size([packSize, packSize])
-                .padding(2);
-            
-            // Build hierarchy: segment -> sub-segments -> companies
-            let packRoot = d3.hierarchy(packData)
+            const packRoot = d3.hierarchy(packData)
                 .sum(d => {
                     if (d.children && d.children.length > 0) {
-                        return d.children.reduce((sum, subSeg) => {
-                            if (subSeg.children && subSeg.children.length > 0) {
-                                return sum + subSeg.children.reduce((s, company) => s + (company.value || 0), 0);
-                            }
-                            return sum + (subSeg.value || 0);
-                        }, 0);
+                        return d.children.reduce((sum, child) => sum + (child.value || 0), 0);
                     }
                     return d.value || 0;
                 })
@@ -324,137 +299,37 @@ function createBubbleChart() {
             
             pack(packRoot);
             
-            // Iteratively check and scale down until all nodes fit within arc boundaries
-            let maxIterations = 10;
-            let iteration = 0;
-            let allNodesFit = false;
+            const radialRange = radius - innerRadius;
+            const angleRange = endAngle - startAngle;
+            const averageRadius = innerRadius + radialRange / 2;
+            const angularScale = angleRange * averageRadius;
+            const radiusScale = radialRange;
             
-            while (!allNodesFit && iteration < maxIterations) {
-                allNodesFit = true;
-                let minScaleFactor = 1;
-                
-                packRoot.descendants().filter(d => d.depth > 0).forEach(node => {
-                    // Transform node position to chart coordinates
-                    const nodeX = node.x - packSize/2;
-                    const nodeY = node.y - packSize/2;
-                    
-                    // Transform to global coordinates (no rotation applied)
-                    const globalX = arcCenterX + nodeX;
-                    const globalY = arcCenterY + nodeY;
-                    
-                    const distance = Math.sqrt(globalX * globalX + globalY * globalY);
-                    
-                    // Check radial boundaries
-                    const maxDistance = distance + node.r;
-                    const minDistance = Math.max(0, distance - node.r);
-                    
-                    if (maxDistance > outerRadius) {
-                        allNodesFit = false;
-                        const requiredScale = (outerRadius - node.r) / distance;
-                        minScaleFactor = Math.min(minScaleFactor, requiredScale * 0.98);
-                    }
-                    
-                    if (minDistance < innerRadius && distance > 0) {
-                        allNodesFit = false;
-                        const requiredScale = (innerRadius + node.r) / distance;
-                        minScaleFactor = Math.min(minScaleFactor, requiredScale * 0.98);
-                    }
-                });
-                
-                // If nodes don't fit, scale down and repack
-                if (!allNodesFit && minScaleFactor < 1) {
-                    packSize = packSize * minScaleFactor;
-                    pack = d3.pack()
-                        .size([packSize, packSize])
-                        .padding(2);
-                    packRoot = d3.hierarchy(packData)
-                        .sum(d => {
-                            if (d.children && d.children.length > 0) {
-                                return d.children.reduce((sum, subSeg) => {
-                                    if (subSeg.children && subSeg.children.length > 0) {
-                                        return sum + subSeg.children.reduce((s, company) => s + (company.value || 0), 0);
-                                    }
-                                    return sum + (subSeg.value || 0);
-                                }, 0);
-                            }
-                            return d.value || 0;
-                        })
-                        .sort((a, b) => b.value - a.value);
-                    pack(packRoot);
-                }
-                
-                iteration++;
-            }
+            const companies = packRoot.descendants().filter(d => d.depth > 1);
             
-            // Draw sub-segments and their companies
-            packRoot.children.forEach(subSegNode => {
-                // Check if this sub-segment has companies in its data
-                if (!subSegNode.data.children || subSegNode.data.children.length === 0) return;
+            companies.forEach(companyNode => {
+                const normalizedAngle = companyNode.x; // Already 0-1 because pack size is 1
+                const normalizedRadius = companyNode.y;
                 
-                // Position of this sub-segment cluster
-                const subSegX = subSegNode.x - packSize/2;
-                const subSegY = subSegNode.y - packSize/2;
+                const bubbleAngle = startAngle + normalizedAngle * angleRange;
+                const bubbleRadius = innerRadius + normalizedRadius * radialRange;
                 
-                // Create group for this sub-segment's companies
-                const subSegGroup = bubbleGroup.append("g")
-                    .attr("transform", `translate(${subSegX},${subSegY})`);
+                const bubbleX = Math.cos(bubbleAngle) * bubbleRadius;
+                const bubbleY = Math.sin(bubbleAngle) * bubbleRadius;
                 
-                // Calculate available space for companies within this sub-segment
-                const companyAreaSize = subSegNode.r * 2;
+                const circleRadius = Math.max(
+                    0.7,
+                    companyNode.r * Math.min(radiusScale, angularScale) * 0.8
+                );
                 
-                // Pack companies within this sub-segment
-                const companyPack = d3.pack()
-                    .size([companyAreaSize, companyAreaSize])
-                    .padding(0.3);
-                
-                const companyData = {
-                    name: subSegNode.data.name,
-                    children: subSegNode.data.children || []
-                };
-                
-                let companyRoot = d3.hierarchy(companyData)
-                    .sum(d => d.value || 0)
-                    .sort((a, b) => b.value - a.value);
-                
-                companyPack(companyRoot);
-                
-                // Check if companies fit and scale if needed
-                let companyScaleFactor = 1;
-                companyRoot.descendants().filter(d => d.depth > 0).forEach(companyNode => {
-                    const companyX = companyNode.x;
-                    const companyY = companyNode.y;
-                    const distanceFromCenter = Math.sqrt(
-                        (companyX - companyAreaSize/2) ** 2 + 
-                        (companyY - companyAreaSize/2) ** 2
-                    );
-                    
-                    if (distanceFromCenter + companyNode.r > subSegNode.r) {
-                        const requiredScale = (subSegNode.r - 1) / (distanceFromCenter + companyNode.r);
-                        companyScaleFactor = Math.min(companyScaleFactor, requiredScale * 0.95);
-                    }
-                });
-                
-                // Rescale companies if needed
-                if (companyScaleFactor < 1) {
-                    const scaledSize = companyAreaSize * companyScaleFactor;
-                    companyPack.size([scaledSize, scaledSize]);
-                    companyRoot = d3.hierarchy(companyData)
-                        .sum(d => d.value || 0)
-                        .sort((a, b) => b.value - a.value);
-                    companyPack(companyRoot);
-                }
-                
-                // Draw all companies in this sub-segment
-                companyRoot.descendants().filter(d => d.depth > 0).forEach(companyNode => {
-                    subSegGroup.append("circle")
-                        .attr("cx", companyNode.x)
-                        .attr("cy", companyNode.y)
-                        .attr("r", Math.max(0.5, companyNode.r))
-                        .attr("fill", d3.color(colorScale(index)).brighter(0.6))
-                        .attr("stroke", "#fff")
-                        .attr("stroke-width", 0.3)
-                        .attr("opacity", 0.8);
-                });
+                bubbleGroup.append("circle")
+                    .attr("cx", bubbleX)
+                    .attr("cy", bubbleY)
+                    .attr("r", circleRadius)
+                    .attr("fill", d3.color(colorScale(index)).brighter(0.6))
+                    .attr("stroke", "#fff")
+                    .attr("stroke-width", 0.3)
+                    .attr("opacity", 0.85);
             });
         }
         
